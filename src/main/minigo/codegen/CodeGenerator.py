@@ -316,19 +316,19 @@ class CodeGenerator(BaseVisitor,Utils):
         return None
     
     def visitIntType(self, ast, o):
-        return "", IntType()
+        return "", ast
     
     def visitFloatType(self, ast, o):
-        return "", FloatType()
+        return "", ast
     
     def visitBoolType(self, ast, o):
-        return "", BoolType()
+        return "", ast
     
     def visitStringType(self, ast, o):
-        return "", StringType()
+        return "", ast
     
     def visitVoidType(self, ast, o):
-        return "", VoidType()
+        return "", ast
     
     def visitArrayType(self, ast: ArrayType, o: Access):
         return "", ast
@@ -375,23 +375,98 @@ class CodeGenerator(BaseVisitor,Utils):
         # Emit assignment code
         self.emit.printout(rhs_code + lhs_code)
    
-    def visitIf(self, ast, o):
-        return None
+    def visitIf(self, ast: If, o: Env):
+        if ast.elseStmt:
+            label_else = o.frame.getNewLabel()  # else label
+            label_end = o.frame.getNewLabel()   # end label
+            # Visit condition expression
+            cond_code, _ = self.visit(ast.expr, Access(o.frame, o.sym, False))
+            self.emit.printout(cond_code)
+            # Emit conditional jump to else label
+            self.emit.printout(self.emit.emitIFFALSE(label_else, o.frame))
+            # Visit then statement
+            self.visit(ast.thenStmt, o)
+            # Emit unconditional jump to end label
+            self.emit.printout(self.emit.emitGOTO(label_end, o.frame))
+            # Emit else label
+            self.emit.printout(self.emit.emitLABEL(label_else, o.frame))
+            # Visit else statement
+            self.visit(ast.elseStmt, o)
+            # Emit end label
+            self.emit.printout(self.emit.emitLABEL(label_end, o.frame))
+        else:
+            label_end = o.frame.getNewLabel()  # end label
+            # Visit condition expression
+            cond_code, _ = self.visit(ast.expr, Access(o.frame, o.sym, False))
+            self.emit.printout(cond_code)
+            # Emit conditional jump to end label
+            self.emit.printout(self.emit.emitIFFALSE(label_end, o.frame))
+            # Visit then statement
+            self.visit(ast.thenStmt, o)
+            # Emit end label
+            self.emit.printout(self.emit.emitLABEL(label_end, o.frame))
     
-    def visitForBasic(self, ast, o):
-        return None
+    def visitForBasic(self, ast: ForBasic, o: Env):
+        # Enter for loop scope
+        o.frame.enterLoop()
+        # Generate labels for loop and end
+        label_continue = o.frame.getContinueLabel()
+        label_break = o.frame.getBreakLabel()
+        # emit loop label
+        self.emit.printout(self.emit.emitLABEL(label_continue, o.frame))
+        # Visit condition expression
+        cond_code, _ = self.visit(ast.cond, Access(o.frame, o.sym, False))
+        self.emit.printout(cond_code)
+        # Emit conditional jump to break label
+        self.emit.printout(self.emit.emitIFFALSE(label_break, o.frame))
+        # Visit loop body
+        self.visit(ast.loop, o)
+        # Emit unconditional jump to continue label
+        self.emit.printout(self.emit.emitGOTO(label_continue, o.frame))
+        # Emit break label
+        self.emit.printout(self.emit.emitLABEL(label_break, o.frame))
+        # Exit for loop scope
+        o.frame.exitLoop()
  
-    def visitForStep(self, ast, o):
-        return None
+    def visitForStep(self, ast: ForStep, o: Env):
+        # Enter for loop scope
+        o.frame.enterLoop()
+        # Generate labels for loop and end
+        label_loop = o.frame.getNewLabel()
+        label_continue = o.frame.getContinueLabel()
+        label_break = o.frame.getBreakLabel()
+        # Visit initialization expression
+        self.visit(ast.init, o)
+        # Emit loop label
+        self.emit.printout(self.emit.emitLABEL(label_loop, o.frame))
+        # Visit condition expression
+        cond_code, _ = self.visit(ast.cond, Access(o.frame, o.sym, False))
+        self.emit.printout(cond_code)
+        # Emit conditional jump to break label
+        self.emit.printout(self.emit.emitIFFALSE(label_break, o.frame))
+        # Visit loop body
+        self.visit(ast.loop, o)
+        # Emit continue label
+        self.emit.printout(self.emit.emitLABEL(label_continue, o.frame))
+        # Visit update expression
+        self.visit(ast.upda, o)
+        # Emit unconditional jump to loop label
+        self.emit.printout(self.emit.emitGOTO(label_loop, o.frame))
+        # Emit break label
+        self.emit.printout(self.emit.emitLABEL(label_break, o.frame))
+        # Exit for loop scope
+        o.frame.exitLoop()
 
-    def visitForEach(self, ast, o):
-        return None
+    def visitForEach(self, ast: ForEach, o: Env):
+        return None # Not implemented
 
-    def visitContinue(self, ast, o):
-        return None
+    def visitContinue(self, ast: Continue, o: Env):
+        # Emit jump to continue label
+        self.emit.printout(self.emit.emitGOTO(o.frame.getContinueLabel(), o.frame))
     
-    def visitBreak(self, ast, o):
-        return None
+    def visitBreak(self, ast: Break, o: Env):
+        # Emit jump to break label
+        self.emit.printout(self.emit.emitGOTO(o.frame.getBreakLabel(), o.frame))
     
     def visitReturn(self, ast: Return, o: Env):
         if ast.expr:
@@ -549,22 +624,22 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitFieldAccess(self, ast, o):
         return None
     
-    def visitIntLiteral(self, ast:IntLiteral, o:Access):
+    def visitIntLiteral(self, ast: IntLiteral, o: Access):
         if isinstance(ast.value, int):
             return self.emit.emitPUSHICONST(ast.value, o.frame), IntType()
         return self.emit.emitPUSHICONST(int(ast.value, 0), o.frame), IntType()
     
-    def visitFloatLiteral(self, ast, o):
+    def visitFloatLiteral(self, ast: FloatLiteral, o: Access):
         if isinstance(ast.value, float):
             return self.emit.emitPUSHFCONST(str(ast.value), o.frame), FloatType()
         return self.emit.emitPUSHFCONST(str(float(ast.value)), o.frame), FloatType()
     
-    def visitBooleanLiteral(self, ast, o):
+    def visitBooleanLiteral(self, ast: BooleanLiteral, o: Access):
         if isinstance(ast.value, bool):
             return self.emit.emitPUSHICONST(1 if ast.value else 0, o.frame), BoolType()
         return self.emit.emitPUSHICONST(1 if ast.value == "true" else 0, o.frame), BoolType()
     
-    def visitStringLiteral(self, ast, o):
+    def visitStringLiteral(self, ast: StringLiteral, o: Access):
         return self.emit.emitPUSHCONST(ast.value, StringType(), o.frame), StringType()
 
     def visitArrayLiteral(self, ast: ArrayLiteral, o: Access):

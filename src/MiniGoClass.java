@@ -6,9 +6,15 @@
  */
 public class MiniGoClass {
     public static void main(String[] args) {
-        int x = 42;
-        int[] arr = new int[10];
-        arr[0] = x;
-        io.putInt((int)x);
+        int[][] arr = new int[][]{{1, 2}, {3, 4}};
+        int i = 0;
+        while ((i < 2 ? 1 : 0) > 0) {
+            int j = 0;
+            while ((j < 2 ? 1 : 0) > 0) {
+                io.putIntLn((int)arr[i][j]);
+                ++j;
+            }
+            ++i;
+        }
     }
 }
