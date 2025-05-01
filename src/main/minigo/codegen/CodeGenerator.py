@@ -52,13 +52,13 @@ class CodeGenerator(BaseVisitor,Utils):
     def __init__(self):
         self.className = "MiniGoClass"
         self.staticInitCode = []
-        self.arrayCell = None
         self.astTree = None
         self.path = None
         self.emit = None
 
     def init(self):
         mem = [
+            Symbol("getInt", MType([], IntType()), CName("io", True)),
             Symbol("putInt", MType([IntType()], VoidType()), CName("io", True)),
             Symbol("putIntLn", MType([IntType()], VoidType()), CName("io", True)),
             Symbol("getFloat", MType([], FloatType()), CName("io", True)),
@@ -119,7 +119,6 @@ class CodeGenerator(BaseVisitor,Utils):
         
         # Collect static field declarations and initializations
         self.staticInitCode = []
-        self.arrayCell = None
         for decl in ast.decl:
             self.visit(decl, env)
         
@@ -164,13 +163,13 @@ class CodeGenerator(BaseVisitor,Utils):
                     varCode = self.emit.emitPUSHCONST('0.0', varType, env.frame)
                 elif isinstance(varType, BoolType):
                     varCode = self.emit.emitPUSHCONST('false', varType, env.frame)
-                elif isinstance(varType, StringType):
-                    varCode = self.emit.emitPUSHCONST('""', varType, env.frame)
                 elif isinstance(varType, ArrayType):
                     for dim in varType.dimens:
                         dim_code, _ = self.visit(dim, env)
                         varCode += dim_code
                     varCode += self.emit.emitNEWARRAY(varType, o.frame)
+                else:
+                    varCode = self.emit.emitPUSHNULL(env.frame)
 
             # Emit assignment to static field
             assign_code = self.emit.emitPUTSTATIC(f"{self.className}/{ast.varName}", varType, env.frame)
@@ -189,18 +188,18 @@ class CodeGenerator(BaseVisitor,Utils):
             else:
                 # Explicitly set default value for the type
                 if isinstance(varType, IntType):
-                    varCode = self.emit.emitPUSHCONST('0', varType, o.frame)
+                    varCode = self.emit.emitPUSHCONST('0', varType, env.frame)
                 elif isinstance(varType, FloatType):
-                    varCode = self.emit.emitPUSHCONST('0.0', varType, o.frame)
+                    varCode = self.emit.emitPUSHCONST('0.0', varType, env.frame)
                 elif isinstance(varType, BoolType):
-                    varCode = self.emit.emitPUSHCONST('false', varType, o.frame)
-                elif isinstance(varType, StringType):
-                    varCode = self.emit.emitPUSHCONST('""', varType, env.frame)
+                    varCode = self.emit.emitPUSHCONST('false', varType, env.frame)
                 elif isinstance(varType, ArrayType):
                     for dim in varType.dimens:
                         dim_code, _ = self.visit(dim, env)
                         varCode += dim_code
                     varCode += self.emit.emitNEWARRAY(varType, o.frame)
+                else:
+                    varCode = self.emit.emitPUSHNULL(env.frame)
 
             # Emit initialization code
             self.emit.printout(varCode)
@@ -355,21 +354,26 @@ class CodeGenerator(BaseVisitor,Utils):
             if not sym:
                 self.visit(VarDecl(ast.lhs.name, None, ast.rhs), o)
                 return
-        
-        # Visit left-hand side (LHS) expression
-        lhs_code, lhs_type = self.visit(ast.lhs, Access(o.frame, o.sym, True))
-        
-        # Visit right-hand side (RHS) expression
-        rhs_code, rhs_type = self.visit(ast.rhs, Access(o.frame, o.sym, False))
+            
+        if type(ast.lhs) is ArrayCell:
+            # Visit left-hand side (LHS) expression
+            lhs_code, lhs_type = self.visit(ast.lhs, Access(o.frame, o.sym, True))
+            # Visit right-hand side (RHS) expression
+            rhs_code, rhs_type = self.visit(ast.rhs, Access(o.frame, o.sym, False))
+        else:
+            # Visit right-hand side (RHS) expression
+            rhs_code, rhs_type = self.visit(ast.rhs, Access(o.frame, o.sym, False))
+            # Visit left-hand side (LHS) expression
+            lhs_code, lhs_type = self.visit(ast.lhs, Access(o.frame, o.sym, True))
+            
 
         # Type conversion if necessary
         if isinstance(lhs_type, FloatType) and isinstance(rhs_type, IntType):
             rhs_code += self.emit.emitI2F(o.frame)
-
-        if self.arrayCell:
+            
+        if type(ast.lhs) is ArrayCell:
             assign_code = lhs_code + rhs_code + self.emit.emitASTORE(lhs_type, o.frame)
             self.emit.printout(assign_code)
-            self.arrayCell = None
             return
 
         # Emit assignment code
@@ -607,17 +611,15 @@ class CodeGenerator(BaseVisitor,Utils):
             if is_final_index:
                 # Final index: Handle read or write
                 if o.isLeft:
-                    # Write: Store the element
-                    self.arrayCell = ast
+                    pass # No action needed for left-hand side
                 else:
                     # Read: Load the element
                     code += self.emit.emitALOAD(ele_type, o.frame)
-                current_type = ele_type  # Final type (e.g., IntType)
             else:
                 # Intermediate index: Load sub-array
                 code += self.emit.emitALOAD(current_type, o.frame)  # aaload
                 # Update type to sub-array
-                current_type = ArrayType(current_type.dimens[1:], ele_type) if len(current_type.dimens) > 1 else ele_type
+            current_type = ArrayType(current_type.dimens[1:], ele_type) if len(current_type.dimens) > 1 else ele_type
         
         return code, current_type
     
@@ -688,4 +690,4 @@ class CodeGenerator(BaseVisitor,Utils):
         return None
 
     def visitNilLiteral(self, ast:NilLiteral, o:Access):
-        return "", None
+        return self.emit.emitPUSHNULL(o.frame), None

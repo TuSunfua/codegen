@@ -6,15 +6,8 @@
  */
 public class MiniGoClass {
     public static void main(String[] args) {
-        int[][] arr = new int[][]{{1, 2}, {3, 4}};
-        int i = 0;
-        while ((i < 2 ? 1 : 0) > 0) {
-            int j = 0;
-            while ((j < 2 ? 1 : 0) > 0) {
-                io.putIntLn((int)arr[i][j]);
-                ++j;
-            }
-            ++i;
-        }
+        String[][] a = new String[][]{{null}, {"food"}};
+        a[0][0] = "no";
+        io.putString((String)a[0][0].concat(" ").concat(a[1][0]).concat(" I feel hungry"));
     }
 }

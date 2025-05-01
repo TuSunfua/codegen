@@ -1,8 +1,5 @@
 func main() {
-    arr := [2][2]int{{1,2}, {3,4}}
-    for i := 0; i < 2; i += 1 {
-        for j := 0; j < 2; j += 1 {
-            putIntLn(arr[i][j])
-        }
-    }
+    a := [2][1]string{{nil}, {"food"}}
+    a[0][0] := "no"
+    putString(a[0][0] + " " + a[1][0] + " I feel hungry")
 }
