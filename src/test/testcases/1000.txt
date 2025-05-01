@@ -1,3 +1,6 @@
 func main() {
-    var arr [3][1]int;
+    x := 42
+    var arr [10]int
+    arr[0] := x
+    putInt(x)
 }

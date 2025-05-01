@@ -94,7 +94,7 @@ class Emitter():
         elif type(typ) is StringType:
             frame.push()
             return self.jvm.emitLDC(in_)
-        elif type(typ) is cgen.ArrayType or type(typ) is cgen.ClassType:
+        elif type(typ) is ArrayType or type(typ) is cgen.ClassType:
             frame.push()
             return self.jvm.emitLDC(in_)
         else:
@@ -114,7 +114,7 @@ class Emitter():
             return self.jvm.emitFALOAD()
         if type(in_) is BoolType:
             return self.jvm.emitIALOAD()
-        elif type(in_) is cgen.ArrayType or type(in_) is cgen.ClassType or type(in_) is StringType:
+        elif type(in_) is ArrayType or type(in_) is cgen.ClassType or type(in_) is StringType:
             return self.jvm.emitAALOAD()
         else:
             raise IllegalOperandException(str(in_))
@@ -129,11 +129,15 @@ class Emitter():
         frame.pop()
         if type(in_) is IntType:
             return self.jvm.emitIASTORE()
-        elif type(in_) is cgen.ArrayType or type(in_) is cgen.ClassType or type(in_) is StringType:
+        if type(in_) is FloatType:
+            return self.jvm.emitFASTORE()
+        if type(in_) is BoolType:
+            return self.jvm.emitIASTORE()
+        elif type(in_) is ArrayType or type(in_) is cgen.ClassType or type(in_) is StringType:
+            # code = self.emitDUP2_X1(frame) \
+            #      + self.emitPOP2(frame) \
+            #      + self.emitSWAP(frame)
             return self.jvm.emitAASTORE()
-        # code += JasminCode.INDENT + "dup2_x1" + JasminCode.END \
-        #      + JasminCode.INDENT + "pop2" + JasminCode.END \
-        #      + JasminCode.INDENT + "swap" + JasminCode.END
         else:
             raise IllegalOperandException(str(in_))
 
@@ -168,7 +172,7 @@ class Emitter():
             return self.jvm.emitFLOAD(index)
         if type(inType) is BoolType:
             return self.jvm.emitILOAD(index)
-        elif type(inType) is cgen.ArrayType or type(inType) is cgen.ClassType or type(inType) is StringType:
+        elif type(inType) is ArrayType or type(inType) is cgen.ClassType or type(inType) is StringType:
             return self.jvm.emitALOAD(index)
         else:
             raise IllegalOperandException(name)
@@ -206,7 +210,7 @@ class Emitter():
             return self.jvm.emitISTORE(index)
         if type(inType) is StringType:
             return self.jvm.emitASTORE(index)
-        elif type(inType) is cgen.ArrayType or type(inType) is cgen.ClassType:
+        elif type(inType) is ArrayType or type(inType) is cgen.ClassType:
             return self.jvm.emitASTORE(index)
         else:
             raise IllegalOperandException(name)
@@ -609,9 +613,21 @@ class Emitter():
         frame.pop()
         return self.jvm.emitIFICMPLT(label)    
     
-    def emitNEW(self, classname, frame):
+    def emitNEW(self, lexem, frame):
         frame.push()
-        return self.jvm.emitNEW(classname)
+        return self.jvm.emitNEW(lexem)
+    
+    def emitANEWARRAY(self, in_, frame):
+        #in_: Type
+        #frame: Frame
+
+        if isinstance(in_, ArrayType):
+            type_str = self.getJVMType(in_.eleType)
+            if len(in_.dimens) == 1:
+                type_str = type_str[1:-1]
+            else:
+                type_str = '[' * (len(in_.dimens) - 1) + type_str
+            return self.jvm.emitANEWARRAY(type_str)
     
     def emitNEWARRAY(self, in_, frame):
         if not isinstance(in_, ArrayType):
@@ -619,23 +635,18 @@ class Emitter():
         
         dim_count = len(in_.dimens)
         eleType = in_.eleType
-        code = ""
-        
-        # Push size for each dimension (default size 10)
-        for _ in range(dim_count):
-            code += self.jvm.emitBIPUSH(10)  # Push 10 for each dimension
-            frame.push()  # Track stack usage
         
         if dim_count == 1:
             if isinstance(eleType, (IntType, FloatType, BoolType)):
                 # Single-dimensional primitive array: use newarray
-                return code + self.jvm.emitNEWARRAY(self.getJVMType(eleType))
+                type_str = 'int' if isinstance(eleType, IntType) else 'float' if isinstance(eleType, FloatType) else 'boolean'
+                return self.jvm.emitNEWARRAY(type_str)
             else:
                 # Single-dimensional reference array: use anewarray
-                return code + self.jvm.emitANEWARRAY(self.getJVMType(eleType))
+                return self.emitANEWARRAY(in_, frame)
         else:
             # Multi-dimensional array: use multianewarray
-            return code + self.jvm.emitMULTIANEWARRAY(self.getJVMType(in_), str(dim_count))
+            return self.jvm.emitMULTIANEWARRAY(self.getJVMType(in_), str(dim_count))
             
     '''   generate code to duplicate the value on the top of the operand stack.<p>
     *   Stack:<p>
@@ -648,6 +659,13 @@ class Emitter():
         frame.push()
         return self.jvm.emitDUP()
     
+    def emitDUP2_X1(self, frame):
+        #frame: Frame
+
+        frame.push()
+        frame.push()
+        return JasminCode.INDENT + "dup2_x1" + JasminCode.END
+    
     def emitSWAP(self, frame):
         #frame: Frame
 
@@ -658,6 +676,13 @@ class Emitter():
 
         frame.pop()
         return self.jvm.emitPOP()
+    
+    def emitPOP2(self, frame):
+        #frame: Frame
+
+        frame.pop()
+        frame.pop()
+        return JasminCode.INDENT + "pop2" + JasminCode.END
 
     '''   generate code to exchange an integer on top of stack to a floating-point number.
     '''
