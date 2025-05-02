@@ -5,13 +5,22 @@ import CodeGenerator as cgen
 from MachineCode import JasminCode
 from CodeGenError import * # REMEMBER TO REMOVE THIS LINE
 
-
 class Emitter():
-    def __init__(self, filename):
-        self.filename = filename
+    def __init__(self, func):
+        self.data = {}
+        self.func = func
+        self.current = ""
         self.buff = list()
         self.jvm = JasminCode()
-
+        
+    def setContext(self, context):
+        if self.current:
+            self.data[self.current] = self.buff
+        if self.data.get(context) is None:
+            self.data[context] = list()
+        self.buff = self.data[context]
+        self.current = context
+        
     def getJVMType(self, inType):
         typeIn = type(inType)
         if typeIn is IntType:
@@ -70,6 +79,7 @@ class Emitter():
             elif i >= -32768 and i <= 32767:
                 return self.jvm.emitSIPUSH(i)
         elif type(in_) is str:
+            frame.pop()
             if in_ == "true":
                 return self.emitPUSHICONST(1, frame)
             elif in_ == "false":
@@ -655,8 +665,7 @@ class Emitter():
         if dim_count == 1:
             if isinstance(eleType, (IntType, FloatType, BoolType)):
                 # Single-dimensional primitive array: use newarray
-                type_str = 'int' if isinstance(eleType, IntType) else 'float' if isinstance(eleType, FloatType) else 'boolean'
-                return self.jvm.emitNEWARRAY(type_str)
+                return self.jvm.emitNEWARRAY(self.getFullType(eleType))
             else:
                 # Single-dimensional reference array: use anewarray
                 return self.emitANEWARRAY(in_, frame)
@@ -757,21 +766,15 @@ class Emitter():
     *   .class public MPC.CLASSNAME<p>
     *   .super java/lang/Object<p>
     '''
-    def emitPROLOG(self, name, parent):
+    def emitPROLOG(self, source, className, parent):
         #name: String
         #parent: String
 
         result = list()
-        result.append(self.jvm.emitSOURCE(name + ".java"))
-        result.append(self.jvm.emitCLASS("public " + name))
+        result.append(self.jvm.emitSOURCE(source + ".java"))
+        result.append(self.jvm.emitCLASS("public " + className))
         result.append(self.jvm.emitSUPER("java/land/Object" if parent == "" else parent))
         return ''.join(result)
-    
-    def emitCLINIT_START(self):
-        return ".method static <clinit>()V\n.limit stack 10\n.limit locals 0\n"
-    
-    def emitCLINIT_END(self):
-        return ".end method\n"
 
     def emitLIMITSTACK(self, num):
         #num: Int
@@ -784,9 +787,10 @@ class Emitter():
         return self.jvm.emitLIMITLOCAL(num)
 
     def emitEPILOG(self):
-        file = open(self.filename, "w")
-        file.write(''.join(self.buff))
-        file.close()
+        for key in self.data:
+            filename, buff = self.func(key), self.data[key]
+            with open(filename, "w") as file:
+                file.write(''.join(buff))
 
     ''' print out the code to screen
     *   @param in the code to be printed out

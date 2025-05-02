@@ -53,7 +53,6 @@ class CodeGenerator(BaseVisitor,Utils):
         self.className = "MiniGoClass"
         self.staticInitCode = []
         self.astTree = None
-        self.path = None
         self.emit = None
 
     def init(self):
@@ -77,28 +76,29 @@ class CodeGenerator(BaseVisitor,Utils):
     def gen(self, ast, dir_):
         gl = self.init()
         self.astTree = ast
-        self.path = dir_
-        self.emit = Emitter(dir_ + "/" + self.className + ".j")
+        self.emit = Emitter(lambda context: dir_ + "/" + context + ".j")
         self.visit(ast, gl)   
         
-    def emitObjectInit(self):
+    def emitObjectInit(self, context, params=[]):
         frame = Frame("<init>", VoidType())  
-        self.emit.printout(self.emit.emitMETHOD("<init>", MType([], VoidType()), False, frame)) 
+        self.emit.printout(self.emit.emitMETHOD("<init>", MType(params, VoidType()), False, frame)) 
         frame.enterScope(True)  
-        self.emit.printout(self.emit.emitVAR(frame.getNewIndex(), "this", ClassType(self.className), frame.getStartLabel(), frame.getEndLabel(), frame))  
+        self.emit.printout(self.emit.emitVAR(frame.getNewIndex(), "this", ClassType(context), frame.getStartLabel(), frame.getEndLabel(), frame))  
         
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
-        self.emit.printout(self.emit.emitREADVAR("this", ClassType(self.className), 0, frame))  
+        self.emit.printout(self.emit.emitREADVAR("this", ClassType(context), 0, frame))  
         self.emit.printout(self.emit.emitINVOKESPECIAL(frame))  
 
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
         self.emit.printout(self.emit.emitRETURN(VoidType(), frame))  
         self.emit.printout(self.emit.emitENDMETHOD(frame))  
         frame.exitScope()   
+        return frame
 
     def visitProgram(self, ast:Program, o):
         env = Env(None, [o])
-        self.emit.printout(self.emit.emitPROLOG(self.className, "java.lang.Object"))
+        self.emit.setContext(self.className)
+        self.emit.printout(self.emit.emitPROLOG(self.className, self.className, "java.lang.Object"))
         
         for decl in ast.decl:
             if type(decl) is FuncDecl:
@@ -112,10 +112,25 @@ class CodeGenerator(BaseVisitor,Utils):
                 pass
                 
             elif type(decl) is StructType:
-                pass
+                env.sym[0].append(Symbol(decl.name, decl, CName(f'{self.className}${decl.name}')))
                 
             elif type(decl) is InterfaceType:
                 pass
+        
+        # Generate class constructor
+        frame = Frame("<init>", VoidType())  
+        self.emit.printout(self.emit.emitMETHOD("<init>", MType([], VoidType()), False, frame)) 
+        frame.enterScope(True)  
+        self.emit.printout(self.emit.emitVAR(frame.getNewIndex(), "this", ClassType(self.className), frame.getStartLabel(), frame.getEndLabel(), frame))  
+        
+        self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
+        self.emit.printout(self.emit.emitREADVAR("this", ClassType(self.className), 0, frame))  
+        self.emit.printout(self.emit.emitINVOKESPECIAL(frame))  
+
+        self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
+        self.emit.printout(self.emit.emitRETURN(VoidType(), frame))  
+        self.emit.printout(self.emit.emitENDMETHOD(frame))  
+        frame.exitScope()   
         
         # Collect static field declarations and initializations
         self.staticInitCode = []
@@ -130,7 +145,6 @@ class CodeGenerator(BaseVisitor,Utils):
             self.emit.printout(self.emit.emitRETURN(VoidType(), env.frame))
             self.emit.printout(self.emit.emitCLINIT_END())
         
-        self.emitObjectInit()
         self.emit.printout(self.emit.emitEPILOG())
     
     def visitVarDecl(self, ast: VarDecl, o: Env):
@@ -154,6 +168,7 @@ class CodeGenerator(BaseVisitor,Utils):
             if type(ast.varType) is not type(varType):
                 if isinstance(ast.varType, FloatType) and isinstance(varType, IntType):
                     varCode += self.emit.emitI2F(env.frame)
+                    varType = ast.varType
             
             if not ast.varInit:
                 # Explicitly set default value for the type
@@ -185,7 +200,14 @@ class CodeGenerator(BaseVisitor,Utils):
             # Generate initialization code if varInit is provided
             if ast.varInit:
                 varCode, varType = self.visit(ast.varInit, env)
-            else:
+                
+            # Type conversion if necessary
+            if type(ast.varType) is not type(varType):
+                if isinstance(ast.varType, FloatType) and isinstance(varType, IntType):
+                    varCode += self.emit.emitI2F(env.frame)
+                    varType = ast.varType
+            
+            if not ast.varInit:
                 # Explicitly set default value for the type
                 if isinstance(varType, IntType):
                     varCode = self.emit.emitPUSHCONST('0', varType, env.frame)
@@ -329,11 +351,22 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitVoidType(self, ast, o):
         return "", ast
     
-    def visitArrayType(self, ast: ArrayType, o: Access):
+    def visitArrayType(self, ast: ArrayType, o: Env):
         return "", ast
     
-    def visitStructType(self, ast, o):
-        return None
+    def visitStructType(self, ast: StructType, o: Env):
+        context = f"{self.className}${ast.name}"
+        self.emit.setContext(context)
+        self.emit.printout(self.emit.emitPROLOG(self.className, context, "java.lang.Object"))
+        o.frame = self.emitObjectInit(context, map(lambda x: x[1] if type(x[1]) is not Id else ClassType(context), ast.elements))
+        
+        for idx, ele in enumerate(ast.elements):
+            typ = ele[1] if type(ele[1]) is not Id else ClassType(context)
+            self.emit.printout(self.emit.emitREADVAR("this", ClassType(context), 0, o.frame)) 
+            self.emit.printout(self.emit.emitREADVAR(ele[0], typ, idx, o.frame))
+            self.emit.printout(self.emit.emitPUTFIELD(f'{context}/{ele[0]}', typ, o.frame))
+            
+        self.emit.setContext(self.className)
 
     def visitInterfaceType(self, ast, o):
         return None
@@ -343,7 +376,7 @@ class CodeGenerator(BaseVisitor,Utils):
         env.frame.enterScope(False)
         self.emit.printout(self.emit.emitLABEL(env.frame.getStartLabel(), env.frame))
         for member in ast.member:
-            self.visit(member, o)
+            self.visit(member, env)
         self.emit.printout(self.emit.emitLABEL(env.frame.getEndLabel(), env.frame))
         env.frame.exitScope()
  
@@ -433,33 +466,35 @@ class CodeGenerator(BaseVisitor,Utils):
         o.frame.exitLoop()
  
     def visitForStep(self, ast: ForStep, o: Env):
+        # Create new environment for the for loop
+        env = Env(o.frame, o.sym.copy())
         # Enter for loop scope
-        o.frame.enterLoop()
+        env.frame.enterLoop()
         # Generate labels for loop and end
-        label_loop = o.frame.getNewLabel()
-        label_continue = o.frame.getContinueLabel()
-        label_break = o.frame.getBreakLabel()
+        label_loop = env.frame.getNewLabel()
+        label_continue = env.frame.getContinueLabel()
+        label_break = env.frame.getBreakLabel()
         # Visit initialization expression
-        self.visit(ast.init, o)
+        self.visit(ast.init, env)
         # Emit loop label
-        self.emit.printout(self.emit.emitLABEL(label_loop, o.frame))
+        self.emit.printout(self.emit.emitLABEL(label_loop, env.frame))
         # Visit condition expression
-        cond_code, _ = self.visit(ast.cond, Access(o.frame, o.sym, False))
+        cond_code, _ = self.visit(ast.cond, Access(env.frame, env.sym, False))
         self.emit.printout(cond_code)
         # Emit conditional jump to break label
-        self.emit.printout(self.emit.emitIFFALSE(label_break, o.frame))
+        self.emit.printout(self.emit.emitIFFALSE(label_break, env.frame))
         # Visit loop body
-        self.visit(ast.loop, o)
+        self.visit(ast.loop, env)
         # Emit continue label
-        self.emit.printout(self.emit.emitLABEL(label_continue, o.frame))
+        self.emit.printout(self.emit.emitLABEL(label_continue, env.frame))
         # Visit update expression
-        self.visit(ast.upda, o)
+        self.visit(ast.upda, env)
         # Emit unconditional jump to loop label
-        self.emit.printout(self.emit.emitGOTO(label_loop, o.frame))
+        self.emit.printout(self.emit.emitGOTO(label_loop, env.frame))
         # Emit break label
-        self.emit.printout(self.emit.emitLABEL(label_break, o.frame))
+        self.emit.printout(self.emit.emitLABEL(label_break, env.frame))
         # Exit for loop scope
-        o.frame.exitLoop()
+        env.frame.exitLoop()
 
     def visitForEach(self, ast: ForEach, o: Env):
         return None # Not implemented
@@ -601,7 +636,7 @@ class CodeGenerator(BaseVisitor,Utils):
         # Step 2: Process each index
         for i, idx in enumerate(ast.idx):
             # Load index value
-            idx_code, _ = self.visit(idx, o)
+            idx_code, _ = self.visit(idx, Access(o.frame, o.sym, False))
             code += idx_code
             
             # Determine if this is the final index
