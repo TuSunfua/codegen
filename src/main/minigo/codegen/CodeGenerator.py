@@ -52,6 +52,7 @@ class CodeGenerator(BaseVisitor,Utils):
     def __init__(self):
         self.className = "MiniGoClass"
         self.staticInitCode = []
+        self.clinit = None
         self.astTree = None
         self.emit = None
 
@@ -79,26 +80,28 @@ class CodeGenerator(BaseVisitor,Utils):
         self.emit = Emitter(lambda context: dir_ + "/" + context + ".j")
         self.visit(ast, gl)   
         
-    def emitObjectInit(self):
-        frame = Frame("<init>", VoidType())  
-        self.emit.printout(self.emit.emitMETHOD("<init>", MType([], VoidType()), False, frame)) 
+    def emitObjectInit(self, frame: Frame, context: str, mtype=MType([], VoidType()), body=[]):
+        self.emit.printout(self.emit.emitMETHOD(context, mtype, False, frame)) 
         frame.enterScope(True)  
-        self.emit.printout(self.emit.emitVAR(frame.getNewIndex(), "this", ClassType(self.className), frame.getStartLabel(), frame.getEndLabel(), frame))  
-        
+        self.emit.printout(self.emit.emitVAR(
+            frame.getNewIndex(), "this", ClassType(context), 
+            frame.getStartLabel(), frame.getEndLabel(), frame
+        ))   
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
-        self.emit.printout(self.emit.emitREADVAR("this", ClassType(self.className), 0, frame))  
-        self.emit.printout(self.emit.emitINVOKESPECIAL(frame))  
+        
+        [self.emit.printout(code) for code in body] 
 
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
-        self.emit.printout(self.emit.emitRETURN(VoidType(), frame))  
+        self.emit.printout(self.emit.emitRETURN(mtype.rettype, frame))  
         self.emit.printout(self.emit.emitENDMETHOD(frame))  
         frame.exitScope()   
 
     def visitProgram(self, ast:Program, o):
-        env = Env(None, [o])
+        # Initialize class name and emitter
         self.emit.setContext(self.className)
         self.emit.printout(self.emit.emitPROLOG(self.className, self.className, "java.lang.Object"))
-        
+        # Collect func, method and type declarations
+        env = Env(None, [o])
         for decl in ast.decl:
             if type(decl) is FuncDecl:
                 if decl.name == "main":
@@ -106,23 +109,41 @@ class CodeGenerator(BaseVisitor,Utils):
                 else:
                     mtype = MType(list(map(lambda x: x.parType, decl.params)), decl.retType)
                 env.sym[0] += [Symbol(decl.name, mtype, CName(self.className))]
-                
             elif type(decl) is MethodDecl:
-                pass
-                
+                pass               
             elif type(decl) is StructType:
+                env.sym[0].append(Symbol(decl.name, decl, CName(f'{self.className}${decl.name}')))              
                 pass
                 
             elif type(decl) is InterfaceType:
                 pass
         
-        # Collect static field declarations and initializations
+        # Generate class constructor
+        frame = Frame("<init>", VoidType())
+        self.emitObjectInit(
+            frame=frame, 
+            context=self.className, 
+            mtype=MType([], VoidType()), 
+            body=[
+                self.emit.emitREADVAR("this", ClassType(self.className), 0, frame),
+                self.emit.emitINVOKESPECIAL(frame)
+            ]
+        )
+        # Generate class initializer (<clinit>)
+        self.clinit = Frame("<clinit>", VoidType())
         self.staticInitCode = []
+        # Code generation
         for decl in ast.decl:
             self.visit(decl, env)
-        
         # Emit static initializer (<clinit>) if there are static field initializations
         if self.staticInitCode:
+            self.emitObjectInit(
+                frame=self.clinit,
+                context="<clinit>",
+                mtype=MType([], VoidType()),
+                body=self.staticInitCode
+            )
+        # Emit epilog
             self.emit.printout(self.emit.emitCLINIT_START())
             for code in self.staticInitCode:
                 self.emit.printout(code)
@@ -139,24 +160,20 @@ class CodeGenerator(BaseVisitor,Utils):
 
         if not o.frame:  # Global scope (static field)
             # Create environment for static field
-            env = Access(Frame(self.className, VoidType()), o.sym, False)
-
+            env = Access(self.clinit, o.sym, False)
             # Generate initialization code if varInit is provided
             if ast.varInit:
                 varCode, varType = self.visit(ast.varInit, env)
-
             # Declare the static field
             field_decl = self.emit.emitATTRIBUTE(ast.varName, varType, True, False, None)
             self.emit.printout(field_decl)
-
             # Type conversion if necessary
             if type(ast.varType) is not type(varType):
                 if isinstance(ast.varType, FloatType) and isinstance(varType, IntType):
                     varCode += self.emit.emitI2F(env.frame)
                     varType = ast.varType
-            
+            # Explicitly set default value for the type           
             if not ast.varInit:
-                # Explicitly set default value for the type
                 if isinstance(varType, IntType):
                     varCode = self.emit.emitPUSHCONST('0', varType, env.frame)
                 elif isinstance(varType, FloatType):
@@ -170,30 +187,24 @@ class CodeGenerator(BaseVisitor,Utils):
                     varCode += self.emit.emitNEWARRAY(varType, o.frame)
                 else:
                     varCode = self.emit.emitPUSHNULL(env.frame)
-
             # Emit assignment to static field
             assign_code = self.emit.emitPUTSTATIC(f"{self.className}/{ast.varName}", varType, env.frame)
-
             # Update symbol table and static initialization code
             o.sym[0].append(Symbol(ast.varName, varType, CName(self.className)))
             self.staticInitCode.append(varCode + assign_code)
-
         else:  # Local scope
             # Create environment for local variable
             env = Access(o.frame, o.sym)
-            
             # Generate initialization code if varInit is provided
             if ast.varInit:
-                varCode, varType = self.visit(ast.varInit, env)
-                
+                varCode, varType = self.visit(ast.varInit, env)  
             # Type conversion if necessary
             if type(ast.varType) is not type(varType):
                 if isinstance(ast.varType, FloatType) and isinstance(varType, IntType):
                     varCode += self.emit.emitI2F(env.frame)
                     varType = ast.varType
-            
+            # Explicitly set default value for the type
             if not ast.varInit:
-                # Explicitly set default value for the type
                 if isinstance(varType, IntType):
                     varCode = self.emit.emitPUSHCONST('0', varType, env.frame)
                 elif isinstance(varType, FloatType):
@@ -207,20 +218,16 @@ class CodeGenerator(BaseVisitor,Utils):
                     varCode += self.emit.emitNEWARRAY(varType, o.frame)
                 else:
                     varCode = self.emit.emitPUSHNULL(env.frame)
-
             # Emit initialization code
-            self.emit.printout(varCode)
-            
+            self.emit.printout(varCode)    
             # Allocate index and declare variable first
             index = o.frame.getNewIndex()
             self.emit.printout(self.emit.emitVAR(
                 index, ast.varName, varType, 
                 o.frame.getStartLabel(), o.frame.getEndLabel(), o.frame
             ))
-
             # Emit assignment to local variable
             self.emit.printout(self.emit.emitWRITEVAR(ast.varName, varType, index, o.frame))
-
             # Update symbol table
             o.sym[0].append(Symbol(ast.varName, varType, Index(index)))
             
@@ -231,39 +238,30 @@ class CodeGenerator(BaseVisitor,Utils):
         
         if not o.frame: # Global scope (static constant)
             # Create environment for static constant
-            env = Access(Frame(self.className, VoidType()), o.sym, False)
-
+            env = Access(self.clinit, o.sym, False)
             # Generate initialization code 
             conCode, conType = self.visit(ast.iniExpr, env)
-
             # Declare the static field
             field_decl = self.emit.emitATTRIBUTE(ast.conName, conType, True, True, None)
             self.emit.printout(field_decl)
-
             # Emit assignment to static constant
             assign_code = self.emit.emitPUTSTATIC(f"{self.className}/{ast.conName}", conType, env.frame)
-
             # Update symbol table and static initialization code
             o.sym[0].append(Symbol(ast.conName, conType, CName(self.className)))
             self.staticInitCode.append(conCode + assign_code)
-        
         else: # Local scope
             # Create environment for local constant
-            env = Access(o.frame, o.sym)
-            
+            env = Access(o.frame, o.sym)          
             # Generate initialization code
-            conCode, conType = self.visit(ast.iniExpr, env)
-            
+            conCode, conType = self.visit(ast.iniExpr, env)      
             # Emit initialization code
-            self.emit.printout(conCode)
-            
+            self.emit.printout(conCode)        
             # Allocate index and declare constant first
             index = o.frame.getNewIndex()
             self.emit.printout(self.emit.emitVAR(
                 index, ast.conName, conType, 
                 o.frame.getStartLabel(), o.frame.getEndLabel(), o.frame
-            ))
-            
+            ))         
             # Update symbol table and static initialization code
             self.emit.printout(self.emit.emitWRITEVAR(ast.conName, conType, index, o.frame))
             o.sym[0].append(Symbol(ast.conName, conType, Index(index)))
@@ -343,14 +341,22 @@ class CodeGenerator(BaseVisitor,Utils):
         context = f"{self.className}${ast.name}"
         self.emit.setContext(context)
         self.emit.printout(self.emit.emitPROLOG(self.className, context, "java.lang.Object"))
-        o.frame = self.emitObjectInit(context, map(lambda x: x[1] if type(x[1]) is not Id else ClassType(context), ast.elements))
         
+        frame = Frame(context, VoidType())
+        body = []
         for idx, ele in enumerate(ast.elements):
             typ = ele[1] if type(ele[1]) is not Id else ClassType(context)
-            self.emit.printout(self.emit.emitREADVAR("this", ClassType(context), 0, o.frame)) 
-            self.emit.printout(self.emit.emitREADVAR(ele[0], typ, idx, o.frame))
-            self.emit.printout(self.emit.emitPUTFIELD(f'{context}/{ele[0]}', typ, o.frame))
+            body.append(self.emit.emitREADVAR("this", ClassType(context), 0, frame)) 
+            body.append(self.emit.emitREADVAR(ele[0], typ, idx, frame))
+            body.append(self.emit.emitPUTFIELD(f'{context}/{ele[0]}', typ, frame))
             
+        self.emitObjectInit(
+            frame=frame, 
+            context=context, 
+            mtype=MType(map(lambda ele: ele[1] if type(ele[1]) is not Id else ClassType(context), ast.elements), VoidType()),
+            body=body
+        )
+        
         self.emit.setContext(self.className)
 
     def visitInterfaceType(self, ast, o):
