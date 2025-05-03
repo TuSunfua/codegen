@@ -95,6 +95,7 @@ class CodeGenerator(BaseVisitor,Utils):
         self.emit.printout(self.emit.emitRETURN(mtype.rettype, frame))  
         self.emit.printout(self.emit.emitENDMETHOD(frame))  
         frame.exitScope()   
+        return frame
 
     def visitProgram(self, ast:Program, o):
         # Initialize class name and emitter
@@ -150,7 +151,6 @@ class CodeGenerator(BaseVisitor,Utils):
             self.emit.printout(self.emit.emitRETURN(VoidType(), env.frame))
             self.emit.printout(self.emit.emitCLINIT_END())
         
-        self.emitObjectInit()
         self.emit.printout(self.emit.emitEPILOG())
     
     def visitVarDecl(self, ast: VarDecl, o: Env):

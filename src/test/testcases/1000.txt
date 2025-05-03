@@ -1,3 +1,12 @@
+type A struct {
+    a int
+    s M
+}
+
+type M struct {
+    asdf int
+}
+
 func main() {
     var x = 1;
 }
