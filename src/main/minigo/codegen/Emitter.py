@@ -5,20 +5,29 @@ import CodeGenerator as cgen
 from MachineCode import JasminCode
 from CodeGenError import * # REMEMBER TO REMOVE THIS LINE
 
-
 class Emitter():
-    def __init__(self, filename):
-        self.filename = filename
+    def __init__(self, func):
+        self.data = {}
+        self.func = func
+        self.current = ""
         self.buff = list()
         self.jvm = JasminCode()
-
+        
+    def setContext(self, context):
+        if self.current:
+            self.data[self.current] = self.buff
+        if self.data.get(context) is None:
+            self.data[context] = list()
+        self.buff = self.data[context]
+        self.current = context
+        
     def getJVMType(self, inType):
         typeIn = type(inType)
         if typeIn is IntType:
             return "I"
-        if typeIn is FloatType:
+        elif typeIn is FloatType:
             return "F"
-        if typeIn is BoolType:
+        elif typeIn is BoolType:
             return "Z"
         elif typeIn is StringType:
             return "Ljava/lang/String;"
@@ -30,17 +39,31 @@ class Emitter():
             return "(" + "".join(list(map(lambda x: self.getJVMType(x), inType.partype))) + ")" + self.getJVMType(inType.rettype)
         elif typeIn is cgen.ClassType:
             return "L" + inType.name + ";"
+        elif typeIn is type(None):
+            return "Ljava/lang/Object;"
         else:
             return str(typeIn)
 
-    def getFullType(inType):
+    def getFullType(self, inType):
         typeIn = type(inType)
         if typeIn is IntType:
             return "int"
+        elif typeIn is FloatType:
+            return "float"
+        elif typeIn is BoolType:
+            return "boolean"
         elif typeIn is cgen.StringType:
             return "java/lang/String"
         elif typeIn is VoidType:
             return "void"
+        elif typeIn is ArrayType:
+            return "[" * len(inType.dimens) + self.getFullType(inType.eleType)
+        elif typeIn is MType:
+            return "(" + "".join(list(map(lambda x: self.getFullType(x), inType.partype))) + ")" + self.getFullType(inType.rettype)
+        elif typeIn is cgen.ClassType:
+            return inType.name
+        elif typeIn is type(None):
+            return "java/lang/Object"
 
     def emitPUSHICONST(self, in_, frame):
         #in: Int or Sring
@@ -56,6 +79,7 @@ class Emitter():
             elif i >= -32768 and i <= 32767:
                 return self.jvm.emitSIPUSH(i)
         elif type(in_) is str:
+            frame.pop()
             if in_ == "true":
                 return self.emitPUSHICONST(1, frame)
             elif in_ == "false":
@@ -73,7 +97,13 @@ class Emitter():
         if rst == "0.0" or rst == "1.0" or rst == "2.0":
             return self.jvm.emitFCONST(rst)
         else:
-            return self.jvm.emitLDC(in_)           
+            return self.jvm.emitLDC(in_)       
+        
+    def emitPUSHNULL(self, frame):
+        #frame: Frame
+        
+        frame.push()
+        return self.jvm.emitPUSHNULL()
 
     ''' 
     *    generate code to push a constant onto the operand stack.
@@ -87,9 +117,9 @@ class Emitter():
         
         if type(typ) is IntType:
             return self.emitPUSHICONST(in_, frame)
-        if type(typ) is FloatType:
+        elif type(typ) is FloatType:
             return self.emitPUSHFCONST(in_, frame)
-        if type(typ) is BoolType:
+        elif type(typ) is BoolType:
             return self.emitPUSHICONST(in_, frame)
         elif type(typ) is StringType:
             frame.push()
@@ -97,6 +127,8 @@ class Emitter():
         elif type(typ) is ArrayType or type(typ) is cgen.ClassType:
             frame.push()
             return self.jvm.emitLDC(in_)
+        elif type(type) is type(None):
+            return self.emitPUSHNULL(frame)
         else:
             raise IllegalOperandException(in_)
 
@@ -174,6 +206,8 @@ class Emitter():
             return self.jvm.emitILOAD(index)
         elif type(inType) is ArrayType or type(inType) is cgen.ClassType or type(inType) is StringType:
             return self.jvm.emitALOAD(index)
+        elif type(inType) is type(None):
+            return self.jvm.emitALOAD(index)
         else:
             raise IllegalOperandException(name)
 
@@ -211,6 +245,8 @@ class Emitter():
         if type(inType) is StringType:
             return self.jvm.emitASTORE(index)
         elif type(inType) is ArrayType or type(inType) is cgen.ClassType:
+            return self.jvm.emitASTORE(index)
+        elif inType is None:
             return self.jvm.emitASTORE(index)
         else:
             raise IllegalOperandException(name)
@@ -373,17 +409,7 @@ class Emitter():
                 frame.pop()
                 return self.jvm.emitFADD()
             elif type(in_) is StringType:
-                return ''.join([
-                    self.emitSWAP(frame),
-                    self.emitNEW("java/lang/StringBuilder", frame),
-                    self.emitDUP(frame),
-                    self.emitINVOKESPECIAL(frame, "java/lang/StringBuilder/<init>", MType([], VoidType())),
-                    self.emitSWAP(frame),
-                    self.emitINVOKEVIRTUAL("java/lang/StringBuilder/append", MType([StringType()], cgen.ClassType("java/lang/StringBuilder")), frame),
-                    self.emitSWAP(frame),
-                    self.emitINVOKEVIRTUAL("java/lang/StringBuilder/append", MType([StringType()], cgen.ClassType("java/lang/StringBuilder")), frame),
-                    self.emitINVOKEVIRTUAL("java/lang/StringBuilder/toString", MType([], StringType()), frame)
-                ])
+                return self.emitINVOKEVIRTUAL("java/lang/String/concat", MType([StringType()], StringType()), frame)
         else:
             if type(in_) is IntType:
                 frame.pop()
@@ -639,8 +665,7 @@ class Emitter():
         if dim_count == 1:
             if isinstance(eleType, (IntType, FloatType, BoolType)):
                 # Single-dimensional primitive array: use newarray
-                type_str = 'int' if isinstance(eleType, IntType) else 'float' if isinstance(eleType, FloatType) else 'boolean'
-                return self.jvm.emitNEWARRAY(type_str)
+                return self.jvm.emitNEWARRAY(self.getFullType(eleType))
             else:
                 # Single-dimensional reference array: use anewarray
                 return self.emitANEWARRAY(in_, frame)
@@ -707,6 +732,12 @@ class Emitter():
         if type(in_) is IntType:
             frame.pop()
             return self.jvm.emitIRETURN()
+        elif type(in_) is FloatType:
+            frame.pop()
+            return self.jvm.emitFRETURN()
+        elif type(in_) is BoolType:
+            frame.pop()
+            return self.jvm.emitIRETURN()
         elif type(in_) is VoidType:
             return self.jvm.emitRETURN()
 
@@ -735,21 +766,15 @@ class Emitter():
     *   .class public MPC.CLASSNAME<p>
     *   .super java/lang/Object<p>
     '''
-    def emitPROLOG(self, name, parent):
+    def emitPROLOG(self, source, className, parent):
         #name: String
         #parent: String
 
         result = list()
-        result.append(self.jvm.emitSOURCE(name + ".java"))
-        result.append(self.jvm.emitCLASS("public " + name))
+        result.append(self.jvm.emitSOURCE(source + ".java"))
+        result.append(self.jvm.emitCLASS("public " + className))
         result.append(self.jvm.emitSUPER("java/land/Object" if parent == "" else parent))
         return ''.join(result)
-    
-    def emitCLINIT_START(self):
-        return ".method static <clinit>()V\n.limit stack 10\n.limit locals 0\n"
-    
-    def emitCLINIT_END(self):
-        return ".end method\n"
 
     def emitLIMITSTACK(self, num):
         #num: Int
@@ -762,9 +787,10 @@ class Emitter():
         return self.jvm.emitLIMITLOCAL(num)
 
     def emitEPILOG(self):
-        file = open(self.filename, "w")
-        file.write(''.join(self.buff))
-        file.close()
+        for key in self.data:
+            filename, buff = self.func(key), self.data[key]
+            with open(filename, "w") as file:
+                file.write(''.join(buff))
 
     ''' print out the code to screen
     *   @param in the code to be printed out

@@ -1,4 +1,4 @@
-import sys,os, shutil
+import sys, os
 from antlr4 import *
 from antlr4.error.ErrorListener import ConsoleErrorListener,ErrorListener
 if not './main/minigo/parser/' in sys.path:
@@ -186,15 +186,16 @@ class TestCodeGen():
         try:
             codeGen.gen(asttree, path)
             
-            shutil.copy(os.path.join(path, "MiniGoClass.j"), "./")    
-            
             subprocess.call("java  -jar "+ JASMIN_JAR + " " + path + "/*.j", shell=True, stderr=subprocess.STDOUT)
             
             subprocess.run(["java", "-cp", ".;lib", "MiniGoClass"], stdout=f, timeout=10)
             
-            with open("MiniGoClass.java", "w") as code:
-                subprocess.run(["java", "-jar", "cfr-0.152.jar", "MiniGoClass.class"], stdout=code, timeout=10)
-                
+            for class_file in os.listdir(os.getcwd()):
+                if class_file.endswith(".class"):
+                    class_name = class_file[:-6] + '.java'
+                    with open(class_name, "w") as fc:
+                        subprocess.run(["java", "-jar", "cfr-0.152.jar", class_file], stdout=fc, timeout=10)
+                        
         except StaticError as e:
             f.write(str(e))
         except subprocess.TimeoutExpired:

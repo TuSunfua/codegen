@@ -187,7 +187,7 @@ class InterfaceType(Type):
 @dataclass
 class StructType(Type):
     name: str
-    elements:List[Tuple[str,Type]]
+    elements:List[tuple[str,Type]]
     methods:List[MethodDecl]
     implements:List[InterfaceType] =  field(default_factory=list)
         
