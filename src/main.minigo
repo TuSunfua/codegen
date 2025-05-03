@@ -1,10 +1,6 @@
-type A struct {
-    a int
-    s M
-}
 
-type M struct {
-    asdf int
+type X struct {
+    a int;
 }
 
 func main() {

@@ -80,22 +80,23 @@ class CodeGenerator(BaseVisitor,Utils):
         self.emit = Emitter(lambda context: dir_ + "/" + context + ".j")
         self.visit(ast, gl)   
         
-    def emitObjectInit(self, frame: Frame, context: str, mtype=MType([], VoidType()), body=[]):
-        self.emit.printout(self.emit.emitMETHOD(context, mtype, False, frame)) 
-        frame.enterScope(True)  
-        self.emit.printout(self.emit.emitVAR(
-            frame.getNewIndex(), "this", ClassType(context), 
-            frame.getStartLabel(), frame.getEndLabel(), frame
-        ))   
+    def emitMethod(self, isInit, frame: Frame, context: str, mtype=MType([], VoidType()), body=[]):
+        self.emit.printout(self.emit.emitMETHOD(frame.name, mtype, False, frame)) 
+        frame.enterScope()  
+        if isInit:
+            self.emit.printout(self.emit.emitVAR(
+                frame.getNewIndex(), "this", ClassType(context), 
+                frame.getStartLabel(), frame.getEndLabel(), frame
+            ))   
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
-        
+        if isInit:
+            self.emit.printout(self.emit.emitREADVAR("this", ClassType(self.className), 0, frame))
+            self.emit.printout(self.emit.emitINVOKESPECIAL(frame))  
         [self.emit.printout(code) for code in body] 
-
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
         self.emit.printout(self.emit.emitRETURN(mtype.rettype, frame))  
-        self.emit.printout(self.emit.emitENDMETHOD(frame))  
+        self.emit.printout(self.emit.emitENDMETHOD(frame))
         frame.exitScope()   
-        return frame
 
     def visitProgram(self, ast:Program, o):
         # Initialize class name and emitter
@@ -119,17 +120,6 @@ class CodeGenerator(BaseVisitor,Utils):
             elif type(decl) is InterfaceType:
                 pass
         
-        # Generate class constructor
-        frame = Frame("<init>", VoidType())
-        self.emitObjectInit(
-            frame=frame, 
-            context=self.className, 
-            mtype=MType([], VoidType()), 
-            body=[
-                self.emit.emitREADVAR("this", ClassType(self.className), 0, frame),
-                self.emit.emitINVOKESPECIAL(frame)
-            ]
-        )
         # Generate class initializer (<clinit>)
         self.clinit = Frame("<clinit>", VoidType())
         self.staticInitCode = []
@@ -138,19 +128,23 @@ class CodeGenerator(BaseVisitor,Utils):
             self.visit(decl, env)
         # Emit static initializer (<clinit>) if there are static field initializations
         if self.staticInitCode:
-            self.emitObjectInit(
+            self.emitMethod(
+                isInit=False,
                 frame=self.clinit,
                 context="<clinit>",
                 mtype=MType([], VoidType()),
                 body=self.staticInitCode
             )
+        # Generate class constructor (<init>)
+        frame = Frame("<init>", VoidType())
+        self.emitMethod(
+            isInit=True,
+            frame=frame, 
+            context=self.className, 
+            mtype=MType([], VoidType()), 
+            body=[]
+        )
         # Emit epilog
-            self.emit.printout(self.emit.emitCLINIT_START())
-            for code in self.staticInitCode:
-                self.emit.printout(code)
-            self.emit.printout(self.emit.emitRETURN(VoidType(), env.frame))
-            self.emit.printout(self.emit.emitCLINIT_END())
-        
         self.emit.printout(self.emit.emitEPILOG())
     
     def visitVarDecl(self, ast: VarDecl, o: Env):
@@ -346,13 +340,14 @@ class CodeGenerator(BaseVisitor,Utils):
         body = []
         for idx, ele in enumerate(ast.elements):
             typ = ele[1] if type(ele[1]) is not Id else ClassType(context)
-            body.append(self.emit.emitREADVAR("this", ClassType(context), 0, frame)) 
-            body.append(self.emit.emitREADVAR(ele[0], typ, idx, frame))
+            body.append(self.emit.emitREADVAR('this', ClassType(context), 0, frame))
+            body.append(self.emit.emitREADVAR(ele[0], typ, idx + 1, frame))
             body.append(self.emit.emitPUTFIELD(f'{context}/{ele[0]}', typ, frame))
             
-        self.emitObjectInit(
+        self.emitMethod(
+            isInit=False,
             frame=frame, 
-            context=context, 
+            context=context,
             mtype=MType(map(lambda ele: ele[1] if type(ele[1]) is not Id else ClassType(context), ast.elements), VoidType()),
             body=body
         )
