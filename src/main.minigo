@@ -1,0 +1,39 @@
+
+
+type Y struct {
+    b float;
+    s string;
+    c boolean
+    x X;
+}
+
+func (y Y) getB() float {
+    return y.b
+}
+
+func (c Y) setS(ss string) {
+    c.s := ss
+}
+
+func (x X) getX1() float {
+    return x.x1
+}
+
+func (x X) setInit(b boolean) {
+    x.isInit := true && b
+}
+
+func main() {
+    var y Y = Y{b: 12., c: false, x: X{x1: 1.2, x2: 4, isInit: true}}
+    y.setS("oke")
+    y.x.getX1()
+    putFloat(y.x.getX1())
+    putFloat(y.x.x1)
+    putString(y.s + "gooo")
+}
+
+type X struct {
+    x1 float
+    x2 float
+    isInit boolean
+}

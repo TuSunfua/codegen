@@ -1,0 +1,23 @@
+{
+    "python.analysis.extraPaths": [
+        "./src/main/minigo/utils",
+        "./src/main/minigo/checker",
+        "./src/main/minigo/codegen"
+    ],
+    "cSpell.words": [
+        "cgen",
+        "CLINIT",
+        "Decompiled",
+        "ENDMETHOD",
+        "GETSTATIC",
+        "INVOKESPECIAL",
+        "INVOKESTATIC",
+        "Jasmin",
+        "minigo",
+        "mtype",
+        "Phung",
+        "PUSHICONST",
+        "READVAR",
+        "WRITEVAR"
+    ]
+}
