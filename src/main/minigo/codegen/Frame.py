@@ -86,7 +86,7 @@ class Frame():
     *   In addition, this method also saves the current index of local variable.
     '''
 
-    def enterScope(self, isProc=False):
+    def enterScope(self, isProc):
         #isProc: Boolean
         start = self.getNewLabel()
         end = self.getNewLabel()

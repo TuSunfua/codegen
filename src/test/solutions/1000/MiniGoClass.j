@@ -6,13 +6,31 @@
 Label0:
 .var 0 is args [Ljava/lang/String; from Label0 to Label1
 Label2:
+	new Y
+	dup
+	ldc 12.0
+	aconst_null
+	iconst_0
+	new X
+	dup
+	ldc 1.2
+	iconst_4
+	i2f
 	iconst_1
-.var 1 is x I from Label2 to Label3
-	istore_1
+	invokespecial X/<init>(FFZ)V
+	invokespecial Y/<init>(FLjava/lang/String;ZLX;)V
+.var 1 is y LY; from Label2 to Label3
+	astore_1
+	aload_1
+	ldc "oke"
+	invokevirtual Y/setS(Ljava/lang/String;)V
+	aload_1
+	getfield Y/x LX;
+	invokevirtual X/getX1()F
 Label3:
 Label1:
 	return
-.limit stack 1
+.limit stack 10
 .limit locals 2
 .end method
 

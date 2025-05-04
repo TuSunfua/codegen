@@ -37,7 +37,7 @@ class Emitter():
             return "[" * len(inType.dimens) + self.getJVMType(inType.eleType)
         elif typeIn is MType:
             return "(" + "".join(list(map(lambda x: self.getJVMType(x), inType.partype))) + ")" + self.getJVMType(inType.rettype)
-        elif typeIn is cgen.ClassType:
+        elif typeIn is cgen.ClassType or typeIn is Id:
             return "L" + inType.name + ";"
         elif typeIn is type(None):
             return "Ljava/lang/Object;"
@@ -60,7 +60,7 @@ class Emitter():
             return "[" * len(inType.dimens) + self.getFullType(inType.eleType)
         elif typeIn is MType:
             return "(" + "".join(list(map(lambda x: self.getFullType(x), inType.partype))) + ")" + self.getFullType(inType.rettype)
-        elif typeIn is cgen.ClassType:
+        elif typeIn is cgen.ClassType or typeIn is Id:
             return inType.name
         elif typeIn is type(None):
             return "java/lang/Object"
@@ -124,10 +124,10 @@ class Emitter():
         elif type(typ) is StringType:
             frame.push()
             return self.jvm.emitLDC(in_)
-        elif type(typ) is ArrayType or type(typ) is cgen.ClassType:
+        elif type(typ) is ArrayType or type(typ) is cgen.ClassType or type(typ) is Id:
             frame.push()
             return self.jvm.emitLDC(in_)
-        elif type(type) is type(None):
+        elif type(typ) is type(None):
             return self.emitPUSHNULL(frame)
         else:
             raise IllegalOperandException(in_)
@@ -146,7 +146,9 @@ class Emitter():
             return self.jvm.emitFALOAD()
         if type(in_) is BoolType:
             return self.jvm.emitIALOAD()
-        elif type(in_) is ArrayType or type(in_) is cgen.ClassType or type(in_) is StringType:
+        elif type(in_) is ArrayType or type(in_) is StringType or type(in_) is cgen.ClassType or type(in_) is Id:
+            return self.jvm.emitAALOAD()
+        elif type(in_) is type(None):
             return self.jvm.emitAALOAD()
         else:
             raise IllegalOperandException(str(in_))
@@ -165,10 +167,9 @@ class Emitter():
             return self.jvm.emitFASTORE()
         if type(in_) is BoolType:
             return self.jvm.emitIASTORE()
-        elif type(in_) is ArrayType or type(in_) is cgen.ClassType or type(in_) is StringType:
-            # code = self.emitDUP2_X1(frame) \
-            #      + self.emitPOP2(frame) \
-            #      + self.emitSWAP(frame)
+        elif type(in_) is ArrayType or type(in_) is StringType or type(in_) is cgen.ClassType or type(in_) is Id:
+            return self.jvm.emitAASTORE()
+        elif type(in_) is type(None):
             return self.jvm.emitAASTORE()
         else:
             raise IllegalOperandException(str(in_))
@@ -204,7 +205,7 @@ class Emitter():
             return self.jvm.emitFLOAD(index)
         if type(inType) is BoolType:
             return self.jvm.emitILOAD(index)
-        elif type(inType) is ArrayType or type(inType) is cgen.ClassType or type(inType) is StringType:
+        elif type(inType) is ArrayType or type(inType) is StringType or type(inType) is cgen.ClassType or type(inType) is Id:
             return self.jvm.emitALOAD(index)
         elif type(inType) is type(None):
             return self.jvm.emitALOAD(index)
@@ -244,9 +245,9 @@ class Emitter():
             return self.jvm.emitISTORE(index)
         if type(inType) is StringType:
             return self.jvm.emitASTORE(index)
-        elif type(inType) is ArrayType or type(inType) is cgen.ClassType:
+        elif type(inType) is ArrayType or type(inType) is cgen.ClassType or type(inType) is Id:
             return self.jvm.emitASTORE(index)
-        elif inType is None:
+        elif type(inType) is type(None):
             return self.jvm.emitASTORE(index)
         else:
             raise IllegalOperandException(name)
@@ -276,8 +277,8 @@ class Emitter():
         if isStatic:
             return self.jvm.emitSTATICFIELD(lexeme, self.getJVMType(in_), isFinal, value)
         else:
-            return self.jvm.emitFIELD(lexeme, self.getJVMType(in_), isFinal, value)
-
+            return self.jvm.emitINSTANCEFIELD(lexeme, self.getJVMType(in_), isFinal, value)
+    
     def emitGETSTATIC(self, lexeme, in_, frame):
         #lexeme: String
         #in_: Type
@@ -474,65 +475,75 @@ class Emitter():
         return self.jvm.emitIOR()
 
     def emitREOP(self, op, in_, frame):
-        # op: String
-        # in_: Type
-        # frame: Frame
-        # ..., value1, value2 -> ..., result
+        # ..., value1, value2 -> ..., result (0 or 1)
 
         result = []
-        labelF = frame.getNewLabel()
-        labelO = frame.getNewLabel()
+        labelTrue = frame.getNewLabel()
+        labelEnd = frame.getNewLabel()
 
         if isinstance(in_, StringType):
-            if op == "==":
+            if op in ["==", "!="]:
                 result += [
-                    self.emitINVOKEVIRTUAL("java/lang/String/equals", MType([cgen.ClassType("java/lang/Object")], BoolType()), frame),
-                    self.jvm.emitIFEQ(labelF)
+                    self.emitINVOKEVIRTUAL("java/lang/String/equals",
+                                        MType([cgen.ClassType("java/lang/Object")], BoolType()), frame)
                 ]
-            elif op == "!=":
-                result += [
-                    self.emitINVOKEVIRTUAL("java/lang/String/equals", MType([cgen.ClassType("java/lang/Object")], BoolType()), frame),
-                    self.jvm.emitIFNE(labelF)
-                ]
+                if op == "==":
+                    result.append(self.jvm.emitIFNE(labelTrue))  # if true -> jump
+                else:
+                    result.append(self.jvm.emitIFEQ(labelTrue))  # if false -> jump
             else:
-                result += [self.emitINVOKEVIRTUAL("java/lang/String/compareTo", MType([cgen.ClassType("java/lang/String")], IntType()), frame)]
+                result += [
+                    self.emitINVOKEVIRTUAL("java/lang/String/compareTo",
+                                        MType([cgen.ClassType("java/lang/String")], IntType()), frame)
+                ]
                 if op == "<":
-                    result.append(self.jvm.emitIFLT(labelF))
+                    result.append(self.jvm.emitIFLT(labelTrue))
                 elif op == ">":
-                    result.append(self.jvm.emitIFGT(labelF))
+                    result.append(self.jvm.emitIFGT(labelTrue))
                 elif op == "<=":
-                    result.append(self.jvm.emitIFLE(labelF))
+                    result.append(self.jvm.emitIFLE(labelTrue))
                 elif op == ">=":
-                    result.append(self.jvm.emitIFGE(labelF))
-        else:
-            frame.pop()
-            frame.pop()
-            
-            # Compare the two values on the stack
+                    result.append(self.jvm.emitIFGE(labelTrue))
+        elif isinstance(in_, FloatType):
+            result.append(self.jvm.emitFCMPL())
             if op == ">":
-                result.append(self.jvm.emitIFICMPLE(labelF))
+                result.append(self.jvm.emitIFGT(labelTrue))
             elif op == ">=":
-                result.append(self.jvm.emitIFICMPLT(labelF))
+                result.append(self.jvm.emitIFGE(labelTrue))
             elif op == "<":
-                result.append(self.jvm.emitIFICMPGE(labelF))
+                result.append(self.jvm.emitIFLT(labelTrue))
             elif op == "<=":
-                result.append(self.jvm.emitIFICMPGT(labelF))
+                result.append(self.jvm.emitIFLE(labelTrue))
             elif op == "!=":
-                result.append(self.jvm.emitIFICMPEQ(labelF))
+                result.append(self.jvm.emitIFNE(labelTrue))
             elif op == "==":
-                result.append(self.jvm.emitIFICMPNE(labelF))
+                result.append(self.jvm.emitIFEQ(labelTrue))
+        elif isinstance(in_, IntType) or isinstance(in_, BoolType):
+            if op == ">":
+                result.append(self.jvm.emitIFICMPGT(labelTrue))
+            elif op == ">=":
+                result.append(self.jvm.emitIFICMPGE(labelTrue))
+            elif op == "<":
+                result.append(self.jvm.emitIFICMPLT(labelTrue))
+            elif op == "<=":
+                result.append(self.jvm.emitIFICMPLE(labelTrue))
+            elif op == "!=":
+                result.append(self.jvm.emitIFICMPNE(labelTrue))
+            elif op == "==":
+                result.append(self.jvm.emitIFICMPEQ(labelTrue))
+        else:
+            raise Exception(f"Unsupported type for relational operator: {in_}")
 
-        # true branch
-        result.append(self.emitPUSHCONST("1", IntType(), frame))
-        frame.pop()
-        result.append(self.emitGOTO(labelO, frame))
-
-        # false branch
-        result.append(self.emitLABEL(labelF, frame))
+        # false case
         result.append(self.emitPUSHCONST("0", IntType(), frame))
+        result.append(self.emitGOTO(labelEnd, frame))
+
+        # true case
+        result.append(self.emitLABEL(labelTrue, frame))
+        result.append(self.emitPUSHCONST("1", IntType(), frame))
 
         # end
-        result.append(self.emitLABEL(labelO, frame))
+        result.append(self.emitLABEL(labelEnd, frame))
         return ''.join(result)
 
     def emitRELOP(self, op, in_, trueLabel, falseLabel, frame):
@@ -738,6 +749,15 @@ class Emitter():
         elif type(in_) is BoolType:
             frame.pop()
             return self.jvm.emitIRETURN()
+        elif type(in_) is StringType:
+            frame.pop()
+            return self.jvm.emitARETURN()
+        elif type(in_) is ArrayType or type(in_) is cgen.ClassType or type(in_) is Id:
+            frame.pop()
+            return self.jvm.emitARETURN()
+        elif type(in_) is type(None):
+            frame.pop()
+            return self.jvm.emitARETURN()
         elif type(in_) is VoidType:
             return self.jvm.emitRETURN()
 

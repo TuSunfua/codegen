@@ -182,6 +182,19 @@ class TestCodeGen():
         path = os.path.join(soldir, str(num))
         if not os.path.isdir(path):
             os.mkdir(path)
+        
+        # Remove all files in path
+        for file in os.listdir(path):
+            file_path = os.path.join(path, file)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+            
+        # Remove all files .class .java in current directory
+        for file in os.listdir(os.getcwd()):
+            file_path = os.path.join(os.getcwd(), file)
+            if os.path.isfile(file_path) and (file.endswith(".class") or file.endswith(".java")):
+                os.remove(file_path)
+        
         f = open(os.path.join(soldir, str(num) + ".txt"),"w")
         try:
             codeGen.gen(asttree, path)
