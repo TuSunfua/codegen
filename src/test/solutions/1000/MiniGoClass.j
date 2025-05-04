@@ -27,6 +27,17 @@ Label2:
 	aload_1
 	getfield Y/x LX;
 	invokevirtual X/getX1()F
+	aload_1
+	getfield Y/x LX;
+	invokevirtual X/getX1()F
+	invokestatic io/putFloat(F)V
+	aload_1
+	getfield Y/x LX;
+	getfield X/x1 F
+	invokestatic io/putFloat(F)V
+	aload_1
+	getfield Y/s Ljava/lang/String;
+	invokestatic io/putString(Ljava/lang/String;)V
 Label3:
 Label1:
 	return

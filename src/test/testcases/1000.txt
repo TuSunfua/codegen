@@ -27,6 +27,9 @@ func main() {
     var y Y = Y{b: 12., c: false, x: X{x1: 1.2, x2: 4, isInit: true}}
     y.setS("oke")
     y.x.getX1()
+    putFloat(y.x.getX1())
+    putFloat(y.x.x1)
+    putString(y.s)
 }
 
 type X struct {
