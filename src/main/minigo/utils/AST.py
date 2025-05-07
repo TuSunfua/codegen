@@ -187,7 +187,7 @@ class InterfaceType(Type):
 @dataclass
 class StructType(Type):
     name: str
-    elements:List[tuple[str,Type]]
+    elements:List[Tuple[str,Type]]
     methods:List[MethodDecl]
     implements:List[InterfaceType] =  field(default_factory=list)
         
@@ -434,7 +434,7 @@ class ArrayLiteral(Literal):
 @dataclass
 class StructLiteral(Literal):
     name:str
-    elements: List[tuple[str,Expr]] # [] if there is no elements
+    elements: List[Tuple[str,Expr]] # [] if there is no elements
     
     def __str__(self):
         return "StructLiteral(" + self.name + ',[' + ','.join(("("+str(i)+","+str(j)+")") for i,j in self.elements) + "])"

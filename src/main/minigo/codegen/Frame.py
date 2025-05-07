@@ -1,4 +1,5 @@
-from Utils import *
+#from Utils import *
+from CodeGenError import *
 
 class Frame():
     def __init__(self, name, returnType):
@@ -17,15 +18,6 @@ class Frame():
         self.indexLocal = list()
         self.conLabel = list()
         self.brkLabel = list()
-        
-    def __str__(self):
-        return "Frame: " + self.name + "\n" + \
-               "Return Type: " + str(self.returnType) + "\n" + \
-               "Current Label: " + str(self.currentLabel) + "\n" + \
-               "Current Operand Stack Size: " + str(self.currOpStackSize) + "\n" + \
-               "Maximum Operand Stack Size: " + str(self.maxOpStackSize) + "\n" + \
-               "Current Index: " + str(self.currIndex) + "\n" + \
-               "Maximum Index: " + str(self.maxIndex) + "\n"
 
     def getCurrIndex(self):
         return self.currIndex
@@ -84,6 +76,8 @@ class Frame():
     *   Then, these labels are pushed onto corresponding stacks.<p>
     *   These labels can be retrieved by getStartLabel() and getEndLabel().<p>
     *   In addition, this method also saves the current index of local variable.
+    *   Parameters:
+    *   - isProc: True when the scope is of a function/method/procedure and False when the scope is of a block statement
     '''
 
     def enterScope(self, isProc):

@@ -93,8 +93,8 @@ class Emitter():
         
         f = float(in_)
         frame.push()
-        rst = "{0:.4f}".format(f)
-        if rst == "0.0" or rst == "1.0" or rst == "2.0":
+        rst = "{0:.1f}".format(f)
+        if f == 0.0 or f == 1.0 or f == 2.0:
             return self.jvm.emitFCONST(rst)
         else:
             return self.jvm.emitLDC(in_)       
@@ -357,10 +357,22 @@ class Emitter():
 
         typ = in_
         list(map(lambda x: frame.pop(), typ.partype))
-        frame.pop()
         if not type(typ) is VoidType:
             frame.push()
+        frame.pop()
         return self.jvm.emitINVOKEVIRTUAL(lexeme, self.getJVMType(in_))
+    
+    def emitINVOKEINTERFACE(self, lexeme, in_, frame):
+        #lexeme: String
+        #in_: Type
+        #frame: Frame
+
+        typ = in_
+        length = len(list(map(lambda x: frame.pop(), typ.partype))) + 1
+        if not type(typ) is VoidType:
+            frame.push()
+        frame.pop()
+        return self.jvm.emitINVOKEINTERFACE(lexeme, self.getJVMType(in_), length)
 
     '''
     *   generate ineg, fneg.
@@ -580,13 +592,18 @@ class Emitter():
     *   @param isStatic <code>true</code> if the method is static; <code>false</code> otherwise.
     '''
 
-    def emitMETHOD(self, lexeme, in_, isStatic, frame):
+    def emitMETHOD(self, lexeme, in_, isStatic=False, isAbstract=False):
         #lexeme: String
         #in_: Type
         #isStatic: Boolean
-        #frame: Frame
+        #isAbstract: Boolean
+        
+        return self.jvm.emitMETHOD(lexeme, self.getJVMType(in_), isStatic, isAbstract)
+    
+    def emitIMPLEMENTS(self, lexeme):
+        #lexeme: String
 
-        return self.jvm.emitMETHOD(lexeme, self.getJVMType(in_), isStatic)
+        return self.jvm.emitIMPLEMENTS(lexeme)
 
     '''   generate the end directive for a function.
     '''
@@ -594,8 +611,9 @@ class Emitter():
         #frame: Frame
 
         buffer = list()
-        buffer.append(self.jvm.emitLIMITSTACK(frame.getMaxOpStackSize()))
-        buffer.append(self.jvm.emitLIMITLOCAL(frame.getMaxIndex()))
+        if frame:
+            buffer.append(self.jvm.emitLIMITSTACK(frame.getMaxOpStackSize()))
+            buffer.append(self.jvm.emitLIMITLOCAL(frame.getMaxIndex()))
         buffer.append(self.jvm.emitENDMETHOD())
         return ''.join(buffer)
 
@@ -635,6 +653,20 @@ class Emitter():
 
         frame.pop()
         return self.jvm.emitIFLE(label)
+    
+    def emitIFEQ(self, label, frame):   
+        #label: Int
+        #frame: Frame
+
+        frame.pop()
+        return self.jvm.emitIFEQ(label)
+    
+    def emitIFNE(self, label, frame):
+        #label: Int
+        #frame: Frame
+
+        frame.pop()
+        return self.jvm.emitIFNE(label)
 
     def emitIFICMPGT(self, label, frame):
         #label: Int
@@ -694,31 +726,12 @@ class Emitter():
 
         frame.push()
         return self.jvm.emitDUP()
-    
-    def emitDUP2_X1(self, frame):
-        #frame: Frame
-
-        frame.push()
-        frame.push()
-        return JasminCode.INDENT + "dup2_x1" + JasminCode.END
-    
-    def emitSWAP(self, frame):
-        #frame: Frame
-
-        return JasminCode.INDENT + "swap" + JasminCode.END
 
     def emitPOP(self, frame):
         #frame: Frame
 
         frame.pop()
         return self.jvm.emitPOP()
-    
-    def emitPOP2(self, frame):
-        #frame: Frame
-
-        frame.pop()
-        frame.pop()
-        return JasminCode.INDENT + "pop2" + JasminCode.END
 
     '''   generate code to exchange an integer on top of stack to a floating-point number.
     '''
@@ -781,19 +794,20 @@ class Emitter():
 
         return self.jvm.emitGOTO(str(label))
 
-    ''' generate some starting directives for a class.<p>
-    *   .source MPC.CLASSNAME.java<p>
-    *   .class public MPC.CLASSNAME<p>
-    *   .super java/lang/Object<p>
-    '''
-    def emitPROLOG(self, source, className, parent):
+    # Generate some startup code for a class or an interface.
+    def emitPROLOG(self, source, name, isClass=True, parent=""):
+        #source: String
         #name: String
+        #isClass: Boolean
         #parent: String
 
         result = list()
         result.append(self.jvm.emitSOURCE(source + ".java"))
-        result.append(self.jvm.emitCLASS("public " + className))
-        result.append(self.jvm.emitSUPER("java/land/Object" if parent == "" else parent))
+        if isClass:
+            result.append(self.jvm.emitCLASS("public " + name))
+        else:
+            result.append(self.jvm.emitINTERFACE("public " + name))
+        result.append(self.jvm.emitSUPER("java/lang/Object" if parent == "" else parent))
         return ''.join(result)
 
     def emitLIMITSTACK(self, num):

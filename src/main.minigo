@@ -4,36 +4,28 @@ type Y struct {
     b float;
     s string;
     c boolean
-    x X;
-}
-
-func (y Y) getB() float {
-    return y.b
-}
-
-func (c Y) setS(ss string) {
-    c.s := ss
-}
-
-func (x X) getX1() float {
-    return x.x1
-}
-
-func (x X) setInit(b boolean) {
-    x.isInit := true && b
-}
-
-func main() {
-    var y Y = Y{b: 12., c: false, x: X{x1: 1.2, x2: 4, isInit: true}}
-    y.setS("oke")
-    y.x.getX1()
-    putFloat(y.x.getX1())
-    putFloat(y.x.x1)
-    putString(y.s + "gooo")
 }
 
 type X struct {
-    x1 float
-    x2 float
-    isInit boolean
+    x float;
+    a [1][1]float
+}
+
+type I interface {
+    foo1(x float) boolean
+}
+
+func (y Y) foo1(x float) boolean {
+    return y.b == 1.0
+}
+
+func (y X) foo1(x float) boolean {
+    y.x := -1
+    return y.x + x == 1.0
+}
+
+func main() {
+    var x = X{x: 1}
+    var c = false && x.foo1(2)
+    putFloat(x.x)
 }
