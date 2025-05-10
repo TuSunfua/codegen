@@ -1,10 +1,4 @@
-'''
- *   @author Nguyen Hua Phung
- *   @version 1.0
- *   23/10/2015
- *   This file provides a simple version of code generator
- *
-'''
+# 2213841
 from Utils import *
 from StaticCheck import *
 from StaticError import *

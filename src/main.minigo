@@ -1,16 +1,7 @@
-func transpose(mat [2][3]int) [3][2]int {
-  var result [3][2]int;
-  for i := 0; i < 2; i += 1 {
-    for j := 0; j < 3; j += 1 {
-      result[j][i] := mat[i][j];
-    }
-  }
-  return result;
-}
+const greeting = "Hi";
 
 func main() {
-  var m [2][3]int = [2][3]int{{1,2,3},{4,5,6}};
-  var t [3][2]int = transpose(m);
-  putIntLn(t[1][0]); // Output: 2
-  putIntLn(t[2][1]); // Output: 6
+  var user string = "GoLang";
+  var output string = greeting + ", " + user;
+  putString(output);
 }
