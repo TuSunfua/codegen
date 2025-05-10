@@ -203,11 +203,11 @@ class TestCodeGen():
             
             subprocess.run(["java", "-cp", ".;lib", "MiniGoClass"], stdout=f, timeout=10)
             
-            for class_file in os.listdir(os.getcwd()):
-                if class_file.endswith(".class"):
-                    class_name = class_file[:-6] + '.java'
-                    with open(class_name, "w") as fc:
-                        subprocess.run(["java", "-jar", "cfr-0.152.jar", class_file], stdout=fc, timeout=10)
+            # for class_file in os.listdir(os.getcwd()):
+            #     if class_file.endswith(".class"):
+            #         class_name = class_file[:-6] + '.java'
+            #         with open(class_name, "w") as fc:
+            #             subprocess.run(["java", "-jar", "cfr-0.152.jar", class_file], stdout=fc, timeout=10)
                         
         except StaticError as e:
             f.write(str(e))

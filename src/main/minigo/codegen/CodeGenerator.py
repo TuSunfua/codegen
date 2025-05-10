@@ -10,7 +10,7 @@ from StaticCheck import *
 from StaticError import *
 from Emitter import Emitter
 from Frame import Frame
-from abc import ABC, abstractmethod
+from abc import ABC
 
 class Val(ABC):
     pass
@@ -199,16 +199,13 @@ class CodeGenerator(BaseVisitor,Utils):
                     if type(ast.varType.eleType) is FloatType and type(ast.varInit.eleType) is IntType:
                         ast.varInit.eleType = FloatType()
                 varCode, varType = self.visit(ast.varInit, env)
-            # Declare the static field
-            field_decl = self.emit.emitATTRIBUTE(ast.varName, varType, True, False, None)
-            self.emit.printout(field_decl)
             # Type conversion if necessary
             if isinstance(ast.varType, FloatType) and isinstance(varType, IntType):
                 varCode += self.emit.emitI2F(env.frame)
                 varType = ast.varType
             if type(ast.varType) is Id and type(varType) is ClassType:
                 interface_def = next((j for i in o.sym for j in i if j.name == ast.varType.name), None).mtype
-                if interface_def:
+                if type(interface_def) is InterfaceType:
                     struct_def = next((j for i in o.sym for j in i if j.name == varType.name), None).mtype
                     struct_def.implements.append(ClassType(ast.varType.name))
                     varType = ast.varType
@@ -220,6 +217,9 @@ class CodeGenerator(BaseVisitor,Utils):
             # Update symbol table and static initialization code
             o.sym[0].append(Symbol(ast.varName, varType, CName(self.className)))
             self.staticInitCode.append(varCode + assign_code)
+            # Declare the static field
+            field_decl = self.emit.emitATTRIBUTE(ast.varName, varType, True, False, None)
+            self.emit.printout(field_decl)
         else:  # Local scope
             # Create environment for local variable
             env = Access(o.frame, o.sym)
@@ -235,7 +235,7 @@ class CodeGenerator(BaseVisitor,Utils):
                 varType = ast.varType
             if type(ast.varType) is Id and type(varType) is ClassType:
                 interface_def = next((j for i in o.sym for j in i if j.name == ast.varType.name), None).mtype
-                if interface_def:
+                if type(interface_def) is InterfaceType:
                     struct_def = next((j for i in o.sym for j in i if j.name == varType.name), None).mtype
                     struct_def.implements.append(ClassType(ast.varType.name))
                     varType = ast.varType
@@ -266,14 +266,14 @@ class CodeGenerator(BaseVisitor,Utils):
             env = Access(self.clinit, o.sym, False)
             # Generate initialization code 
             conCode, conType = self.visit(ast.iniExpr, env)
-            # Declare the static field
-            field_decl = self.emit.emitATTRIBUTE(ast.conName, conType, True, True, None)
-            self.emit.printout(field_decl)
             # Emit assignment to static constant
             assign_code = self.emit.emitPUTSTATIC(f"{self.className}/{ast.conName}", conType, env.frame)
             # Update symbol table and static initialization code
             o.sym[0].append(Symbol(ast.conName, conType, CName(self.className)))
             self.staticInitCode.append(conCode + assign_code)
+            # Declare the static field
+            field_decl = self.emit.emitATTRIBUTE(ast.conName, conType, True, True, None)
+            self.emit.printout(field_decl)
         else: # Local scope
             # Create environment for local constant
             env = Access(o.frame, o.sym)          
@@ -474,7 +474,7 @@ class CodeGenerator(BaseVisitor,Utils):
         # Check if LHS is interface type and RHS is class type
         if isinstance(lhs_type, Id) and isinstance(rhs_type, ClassType):
             interface_def = next((j for i in o.sym for j in i if j.name == lhs_type.name), None).mtype
-            if interface_def:
+            if type(interface_def) is InterfaceType:
                 struct_def = next((j for i in o.sym for j in i if j.name == rhs_type.name), None).mtype
                 struct_def.implements.append(ClassType(lhs_type.name))
 
@@ -605,9 +605,10 @@ class CodeGenerator(BaseVisitor,Utils):
             ec, et = self.visit(ast.expr, Access(o.frame, o.sym, False))
             if isinstance(et, IntType) and isinstance(o.frame.returnType, FloatType):
                 ec += self.emit.emitI2F(o.frame)
+                et = o.frame.returnType
             if isinstance(et, ClassType) and isinstance(o.frame.returnType, Id):
                 interface_def = next((j for i in o.sym for j in i if j.name == o.frame.returnType.name), None).mtype
-                if interface_def:
+                if type(interface_def) is InterfaceType:
                     struct_def = next((j for i in o.sym for j in i if j.name == et.name), None).mtype
                     struct_def.implements.append(ClassType(o.frame.returnType.name))
             self.emit.printout(ec + self.emit.emitRETURN(et, o.frame))
@@ -724,7 +725,7 @@ class CodeGenerator(BaseVisitor,Utils):
                     arg_code += self.emit.emitI2F(o.frame)
                 if isinstance(arg_type, ClassType) and isinstance(par_type, Id):
                     interface_def = next((j for i in o.sym for j in i if j.name == par_type.name), None).mtype
-                    if interface_def:
+                    if type(interface_def) is InterfaceType:
                         struct_def = next((j for i in o.sym for j in i if j.name == arg_type.name), None).mtype
                         struct_def.implements.append(ClassType(par_type.name))
                 self.emit.printout(arg_code)
@@ -743,7 +744,7 @@ class CodeGenerator(BaseVisitor,Utils):
                         arg_code += self.emit.emitI2F(o.frame)
                     if isinstance(arg_type, ClassType) and isinstance(par_type, Id):
                         interface_def = next((j for i in o.sym for j in i if j.name == par_type.name), None).mtype
-                        if interface_def:
+                        if type(interface_def) is InterfaceType:
                             struct_def = next((j for i in o.sym for j in i if j.name == arg_type.name), None).mtype
                             struct_def.implements.append(ClassType(par_type.name))
                 code += arg_code
@@ -769,7 +770,7 @@ class CodeGenerator(BaseVisitor,Utils):
                         arg_code += self.emit.emitI2F(o.frame)
                     if isinstance(arg_type, ClassType) and isinstance(par_type, Id):
                         interface_def = next((j for i in o.sym for j in i if j.name == par_type.name), None).mtype
-                        if interface_def:
+                        if type(interface_def) is InterfaceType:
                             struct_def = next((j for i in o.sym for j in i if j.name == arg_type.name), None).mtype
                             struct_def.implements.append(ClassType(par_type.name))
                 self.emit.printout(arg_code)
@@ -791,7 +792,7 @@ class CodeGenerator(BaseVisitor,Utils):
                         arc_code += self.emit.emitI2F(o.frame)
                     if isinstance(arc_type, ClassType) and isinstance(par_type, Id):
                         interface_def = next((j for i in o.sym for j in i if j.name == par_type.name), None).mtype
-                        if interface_def:
+                        if type(interface_def) is InterfaceType:
                             struct_def = next((j for i in o.sym for j in i if j.name == arc_type.name), None).mtype
                             struct_def.implements.append(ClassType(par_type.name))
                 code += arc_code
@@ -828,28 +829,20 @@ class CodeGenerator(BaseVisitor,Utils):
             idx_code, _ = self.visit(idx, Access(o.frame, o.sym, False))
             code += idx_code
             
-            # Determine if this is the final index for accessing the element
-            is_final_index = (i == len(ast.idx) - 1)
-            ele_type = current_type.eleType
-            
-            # Check if the access fully resolves to the element type
-            fully_resolved = isinstance(current_type, ArrayType) and len(ast.idx) == len(current_type.dimens)
-            
-            if is_final_index and fully_resolved:
-                # Final index and fully resolved: Load the element
-                if o.isLeft:
-                    pass  # No action for left-hand side (handled in assignment)
-                else:
-                    # Emit load for the element type (e.g., faload for FloatType)
-                    code += self.emit.emitALOAD(ele_type, o.frame)
+            # If this is not the final dimension, we just want the subarray
+            if i < len(ast.idx) - 1:
+                # Emit AALOAD to get the subarray reference
+                current_type = ArrayType(current_type.dimens[1:], current_type.eleType)
+                code += self.emit.emitALOAD(current_type, o.frame)
             else:
-                # Intermediate or partial access: Load subarray
-                code += self.emit.emitALOAD(current_type, o.frame)  # aaload
-                # Update current_type to subarray or element type
-                if isinstance(current_type, ArrayType) and len(current_type.dimens) > 1:
-                    current_type = ArrayType(current_type.dimens[1:], ele_type)
+                # Last dimension
+                current_type = current_type.eleType if len(current_type.dimens) == 1 else ArrayType(current_type.dimens[1:], current_type.eleType)
+                if o.isLeft:
+                    # For assignment (left side), we don't need to do anything
+                    pass
                 else:
-                    current_type = ele_type
+                    # Emit ALOAD to get the element value
+                    code += self.emit.emitALOAD(current_type, o.frame)
         
         return code, current_type
     
@@ -920,7 +913,7 @@ class CodeGenerator(BaseVisitor,Utils):
                         val_code += self.emit.emitI2F(o.frame)
                     if isinstance(array_type.eleType, Id) and isinstance(val_type, ClassType):
                         interface_def = next((j for i in o.sym for j in i if j.name == array_type.eleType.name), None).mtype
-                        if interface_def:
+                        if type(interface_def) is InterfaceType:
                             struct_def = next((j for i in o.sym for j in i if j.name == val_type.name), None).mtype
                             struct_def.implements.append(ClassType(val_type.name))
                 code += val_code
@@ -963,7 +956,7 @@ class CodeGenerator(BaseVisitor,Utils):
                     arg_type = param[1]
                 if type(param[1]) is Id and type(arg_type) is ClassType:
                     interface_def = next((j for i in o.sym for j in i if j.name == param[1].name), None).mtype
-                    if interface_def:
+                    if type(interface_def) is InterfaceType:
                         struct_def = next((j for i in o.sym for j in i if j.name == arg_type.name), None).mtype
                         struct_def.implements.append(ClassType(param[1].name))
                         arg_type = param[1]

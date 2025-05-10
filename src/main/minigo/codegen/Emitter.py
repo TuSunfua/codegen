@@ -3,7 +3,6 @@ from StaticCheck import *
 from StaticError import *
 import CodeGenerator as cgen
 from MachineCode import JasminCode
-from CodeGenError import * # REMEMBER TO REMOVE THIS LINE
 
 class Emitter():
     def __init__(self, func):
@@ -78,6 +77,8 @@ class Emitter():
                 return self.jvm.emitBIPUSH(i)
             elif i >= -32768 and i <= 32767:
                 return self.jvm.emitSIPUSH(i)
+            elif i >= -2147483648 and i <= 2147483647:
+                return self.jvm.emitLDC(str(i))
         elif type(in_) is str:
             frame.pop()
             if in_ == "true":
@@ -145,7 +146,7 @@ class Emitter():
         if type(in_) is FloatType:
             return self.jvm.emitFALOAD()
         if type(in_) is BoolType:
-            return self.jvm.emitIALOAD()
+            return self.jvm.emitBALOAD()
         elif type(in_) is ArrayType or type(in_) is StringType or type(in_) is cgen.ClassType or type(in_) is Id:
             return self.jvm.emitAALOAD()
         elif type(in_) is type(None):
@@ -166,7 +167,7 @@ class Emitter():
         if type(in_) is FloatType:
             return self.jvm.emitFASTORE()
         if type(in_) is BoolType:
-            return self.jvm.emitIASTORE()
+            return self.jvm.emitBASTORE()
         elif type(in_) is ArrayType or type(in_) is StringType or type(in_) is cgen.ClassType or type(in_) is Id:
             return self.jvm.emitAASTORE()
         elif type(in_) is type(None):
@@ -836,9 +837,4 @@ class Emitter():
 
     def clearBuff(self):
         self.buff.clear()
-
-
-
-
-
         
