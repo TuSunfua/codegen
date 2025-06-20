@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import re
 
-GITHUB_KEY = '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'
+GITHUB_KEY = '<paste your key here>'
 
 token = GITHUB_KEY
 endpoint = "https://models.inference.ai.azure.com"
